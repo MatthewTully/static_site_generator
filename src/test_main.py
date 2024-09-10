@@ -1,6 +1,6 @@
 """Unit test main."""
 import unittest
-from main import split_nodes_delimiter, set_closing_delimiter, validate_delimiter_for_type, extract_markdown_images, extract_markdown_links, split_nodes_image, split_nodes_link, text_to_textnodes, markdown_to_blocks, block_to_block_type, populate_html_node_for_block, strip_markdown_syntax, get_heading_count, populate_html_node_for_list_blocks, markdown_to_html
+from main import split_nodes_delimiter, set_closing_delimiter, validate_delimiter_for_type, extract_markdown_images, extract_markdown_links, split_nodes_image, split_nodes_link, text_to_textnodes, markdown_to_blocks, block_to_block_type, populate_html_node_for_block, strip_markdown_syntax, get_heading_count, populate_html_node_for_list_blocks, markdown_to_html, extract_title
 from textnode import TextNode
 from htmlnode import ParentNode
 
@@ -644,7 +644,7 @@ class TestPopulateHTMLNodeForBlock(unittest.TestCase):
         self.assertEqual(expected_html, res.to_html())
 
     def test_quote_block(self):
-        block_text = ">This is a block of text.\nIt does include some **bold**, and a bit of *italic*\nJust on that line though."
+        block_text = ">This is a block of text.\n>It does include some **bold**, and a bit of *italic*\n>Just on that line though."
         expected_html = "<blockquote>This is a block of text.\nIt does include some <b>bold</b>, and a bit of <i>italic</i>\nJust on that line though.</blockquote>"
         res = populate_html_node_for_block("quote", block_text)
         self.assertIsInstance(res, ParentNode)
@@ -692,3 +692,31 @@ And another paragraph, but this one has a link on the next line.
         res = markdown_to_html(markdown_block)
         self.assertIsInstance(res, ParentNode)
         self.assertEqual(expected_html, res.to_html())
+
+
+class TestExtractTitle(unittest.TestCase):
+    def test_happy_path(self):
+        self.assertEqual("This is a title.", extract_title("# This is a title."))
+
+        test_str = """# I am a title           """
+        expected = "I am a title"
+        self.assertEqual(expected, extract_title(test_str))
+
+        test_str = """# I am a title
+This is not,
+Neither is this.            """
+        expected = "I am a title"
+        self.assertEqual(expected, extract_title(test_str))
+
+    def test_exception(self):
+        with self.assertRaisesRegex(Exception, "No Header found in text."):
+            extract_title("")
+
+        with self.assertRaisesRegex(Exception, "No Header found in text."):
+            extract_title("I am not a title")
+
+        with self.assertRaisesRegex(Exception, "No Header found in text."):
+            test_str = """I am not a title
+This is not,
+Neither is this.            """
+            extract_title(test_str)

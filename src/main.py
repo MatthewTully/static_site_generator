@@ -1,6 +1,6 @@
 """Entry point for main."""
 from textnode import TextNode, text_node_to_html_node
-from htmlnode import ParentNode, LeafNode, HTMLNode
+from htmlnode import ParentNode
 import re
 import os
 import shutil
@@ -15,8 +15,9 @@ text_type_image = ("image", "![", "]")
 def main() -> None:
     """main func."""
     copy_files("./static", "./public")
+    generate_pages_recursive("./content", "./template.html", "./public")
 
-def copy_files(source, destination, destination_root=None):
+def copy_files(source:str, destination:str, destination_root:str|None=None) -> None:
     """Recursively copy files from source to destination."""
     print(f"Copying from {source} to {destination}")
     if destination_root is None:
@@ -48,30 +49,77 @@ def copy_files(source, destination, destination_root=None):
     if destination == destination_root:
         print("Copy successful")
     return
-    
 
 
+def output_html(to_path:str, html:str) -> None:
+    """Output HTML to file."""
+    print(f"Outputting HTML file to {to_path}")
+    with open(os.path.join(to_path), 'w', encoding="utf-8") as output:
+        output.write(html)
+        output.close
+
+def generate_pages_recursive(dir_path_content:str, template_path:str, dest_dir_path:str) -> None:
+    """Recursively generate markdown pages."""
+    if not os.path.exists(dest_dir_path):
+        print(f"{dest_dir_path} does not exist, creating..")
+        os.mkdir(dest_dir_path)
+
+    for item in os.listdir(dir_path_content):
+        item_path = os.path.join(dir_path_content, item)
+        if os.path.isfile(item_path):
+            print(f"generating {item}")
+            new_file_name = f"{item.split('.')[0]}.html"
+            generate_page(item_path, template_path, os.path.join(dest_dir_path, new_file_name))
+        else:
+            generate_pages_recursive(item_path, template_path, os.path.join(dest_dir_path, item))
 
 
+def generate_page(from_path:str, template_path:str, dest_path:str) -> None:
+    """Generate HTML from template and markdown."""
+    print(f"Generating page from {from_path} to {dest_path} using {template_path}")
+    markdown = None
+    template = None
+    with open(from_path, 'r', encoding="utf-8") as from_file:
+        markdown = from_file.read()
+        from_file.close()
+    if markdown is None:
+        raise Exception(f"Failed to read content from {from_path}")
+    with open(template_path, 'r', encoding="utf-8") as template_file:
+        template = template_file.read()
+        template_file.close()
+    if template is None:
+        raise Exception(f"Failed to read content from {from_path}")
+    html = markdown_to_html(markdown).to_html()
+    title = extract_title(markdown)
+
+    new_html = template.replace("{{ Title }}", title).replace("{{ Content }}", html)
+    output_html(dest_path, new_html)
 
 
+def extract_title(markdown: str) -> str:
+    """Extract H1 header from markdown."""
+    lines = markdown.split("\n")
+    header_list = list(filter(lambda x: x.startswith("# "), lines))
+    if len(header_list) == 0:
+        raise Exception("No Header found in text.")
+    return header_list[0][2:].strip()
 
 
 def strip_markdown_syntax(string_to_strip:str, block_type:str):
     """Strips markdown syntax from blocks."""
     if block_type == "paragraph":
-        return string_to_strip
+        return string_to_strip.strip()
     if block_type == "heading":
-        return string_to_strip[get_heading_count(string_to_strip)+1:]
+        return string_to_strip[get_heading_count(string_to_strip)+1:].strip()
     if block_type == "code":
-        return string_to_strip.removeprefix("```").removesuffix("```")
+        return string_to_strip.removeprefix("```").removesuffix("```").strip()
     if block_type == "quote":
-        return string_to_strip.removeprefix(">")
+        return string_to_strip.removeprefix(">").strip()
     if block_type == "ordered_list":
         start_index = (string_to_strip.find(". "))+2
-        return string_to_strip[start_index:]
+        return string_to_strip[start_index:].strip()
     if block_type == "unordered_list":
-        return string_to_strip[2:]
+        return string_to_strip[2:].strip()
 
 
 def get_heading_count(text:str)-> int:
@@ -102,10 +150,17 @@ def populate_html_node_for_list_blocks(list_type:str, block:str):
 
 def populate_html_node_for_block(block_type:str, block:str) -> ParentNode:
     """Convert block to Parent and LeafNodes."""
-    # break down: markdown -> block -> text
+    if block_type == "quote":
+        new_lines = []
+        for line in block.split("\n"):
+            new_lines.append(strip_markdown_syntax(line, block_type))
+        cleaned_block = "\n".join(new_lines)
+        node_list = text_to_textnodes(cleaned_block)
+        child_nodes =list(map(lambda x: text_node_to_html_node(x), node_list))
+        return ParentNode(f"blockquote", child_nodes)
     if block_type not in ("ordered_list", "unordered_list"):
         node_list = text_to_textnodes(strip_markdown_syntax(block, block_type))
-        child_nodes =list(map(lambda x: text_node_to_html_node(x), node_list))    
+        child_nodes =list(map(lambda x: text_node_to_html_node(x), node_list))
         if block_type == "paragraph":
             return ParentNode("p", child_nodes)
         if block_type == "heading":
@@ -113,8 +168,7 @@ def populate_html_node_for_block(block_type:str, block:str) -> ParentNode:
         if block_type == "code":
             code_node = ParentNode("code", child_nodes)
             return ParentNode("pre", [code_node])
-        if block_type == "quote":
-            return ParentNode(f"blockquote", child_nodes)
+
     return populate_html_node_for_list_blocks(block_type, block)
 
 
